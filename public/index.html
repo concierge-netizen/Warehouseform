@@ -369,8 +369,11 @@ h1,h2,h3,.bebas{font-family:'Bebas Neue',Impact,Arial,sans-serif;font-weight:400
 
     <div class="submit-row" style="margin-top:14px;">
       <button class="btn btn-primary" id="submit-btn" onclick="submitForm()">Create &amp; Notify</button>
+      <button class="btn btn-outline" onclick="previewBolFromForm('full')" title="Preview 8.5×11 BOL with current form data">👁 Preview Full BOL</button>
+      <button class="btn btn-outline" onclick="previewBolFromForm('condensed')" title="Preview 4×6 BOL with current form data">👁 Preview 4×6</button>
       <button class="btn btn-ghost" onclick="resetForm()">Clear Form</button>
     </div>
+    <p style="font-size:10px;color:#444;margin-top:10px;line-height:1.5;">Preview BOLs before submitting — PO # will show as <strong style="color:var(--label);">DRAFT</strong>. After creating the record, a real PO will be assigned.</p>
   </div>
 
   </div><!-- /form-panel -->
@@ -383,14 +386,35 @@ h1,h2,h3,.bebas{font-family:'Bebas Neue',Impact,Arial,sans-serif;font-weight:400
     <div class="sc-po">PO #<span id="sc-po-val">—</span></div>
     <p style="font-size:12px;color:#444;">Client: <span id="sc-client-val"></span> &bull; <span id="sc-account-val"></span></p>
     <div class="sc-links">
+      <button class="btn btn-primary" onclick="openBolPicker()" style="background:var(--warn);">📄 Generate BOL</button>
       <a id="sc-monday-link" href="#" target="_blank" class="btn btn-outline" style="text-decoration:none;">Open in Monday</a>
       <a id="sc-billing-link" href="#" target="_blank" class="btn btn-ghost" style="text-decoration:none;display:none;">Billing Record</a>
-      <button class="btn btn-primary" onclick="newEntry()">New Entry</button>
+      <button class="btn btn-ghost" onclick="newEntry()">New Entry</button>
+    </div>
+  </div>
+
+  <!-- BOL PICKER MODAL -->
+  <div id="bol-picker" style="display:none;position:fixed;inset:0;background:#0a0a0ad9;z-index:200;align-items:center;justify-content:center;padding:20px;">
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:6px;padding:28px;max-width:440px;width:100%;">
+      <div style="font-family:'Bebas Neue',Impact,Arial,sans-serif;font-size:20px;letter-spacing:2px;color:var(--green);margin-bottom:8px;">Choose BOL Format</div>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:20px;">Both formats pull live data from the Monday record.</p>
+      <div style="display:grid;gap:10px;">
+        <button class="btn btn-primary" onclick="generateBol('full')" style="padding:16px;text-align:left;">
+          <div style="font-size:13px;letter-spacing:1.5px;">📄 Full BOL — 8.5 × 11</div>
+          <div style="font-size:10px;font-weight:400;opacity:.7;margin-top:2px;letter-spacing:.5px;text-transform:none;">Detailed carrier/shipper/consignee, items table, signatures, terms</div>
+        </button>
+        <button class="btn btn-outline" onclick="generateBol('condensed')" style="padding:16px;text-align:left;">
+          <div style="font-size:13px;letter-spacing:1.5px;">🏷️ Condensed BOL — 4 × 6</div>
+          <div style="font-size:10px;font-weight:400;opacity:.7;margin-top:2px;letter-spacing:.5px;text-transform:none;">Thermal-printer friendly, key fields only</div>
+        </button>
+        <button class="btn btn-ghost" onclick="document.getElementById('bol-picker').style.display='none';" style="margin-top:6px;">Cancel</button>
+      </div>
     </div>
   </div>
 
 </div><!-- /page -->
 
+<script src="bol.js"></script>
 <script>
 // ══════════════════════════════════════════════════════════════
 //  CONFIG — update these values
@@ -400,8 +424,8 @@ const CONFIG = {
   MONDAY_API_URL:    'https://api.monday.com/v2',
   MONDAY_API_TOKEN:  'eyJhbGciOiJIUzI1NiJ9.eyJ0aWQiOjYzNjEzNzc5MSwiYWFpIjoxMSwidWlkIjoxNDk4NzI0NSwiaWFkIjoiMjAyNi0wMy0yMlQxNzoyNTo1MC4wMDBaIiwicGVyIjoibWU6d3JpdGUiLCJhY3RpZCI6NjYxOTgxNSwicmduIjoidXNlMSJ9.RLTGytTbLaran19E20Ag8nzxdaWuwVKVZNx3fdvAIBQ',   // paste token
   BOARD_ID:          '18405667848',
-  GROUP_INBOUND:     'topics',        // "Inbound 2nd Qtr"
-  GROUP_OUTBOUND:    'new_group',     // "Outbound 2nd Otr"
+  GROUP_INBOUND:     'topics',        // "Activity" — single group for both directions
+  GROUP_OUTBOUND:    'topics',        // same group; filter by Direction column in Monday view
 
   // Cloudinary
   CLOUDINARY_CLOUD:  'dxkpbjicu',
@@ -844,6 +868,9 @@ async function submitForm() {
 
     fill.style.width = '100%';
 
+    // Snapshot data for BOL generator
+    lastSubmittedData = formData;
+
     // Show success
     const billingUrl = buildBillingUrl(itemId, formData, photoUrls);
     document.getElementById('form-panel').style.display    = 'none';
@@ -900,8 +927,63 @@ function newEntry() {
   resetForm();
 }
 
+// ══════════════════════════════════════════════════════════════
+//  BOL GENERATOR  (uses shared bol.js → window.HANDS_BOL)
+// ══════════════════════════════════════════════════════════════
+let lastSubmittedData = null;   // snapshot of last successful submit (for post-submit "Generate BOL")
+
+function collectFormData() {
+  // Read whatever's currently typed into the form — used by Preview buttons before submit
+  return {
+    direction:    direction,
+    client:       v('f-client'),
+    account:      v('f-account'),
+    email:        v('f-email'),
+    phone:        v('f-phone'),
+    project:      v('f-project'),
+    purpose:      v('f-purpose'),
+    wbs:          v('f-wbs'),
+    handler:      v('f-handler'),
+    date:         v('f-date'),
+    time:         v('f-time'),
+    status:       v('f-status'),
+    carrier:      v('f-carrier'),
+    tracking:     v('f-tracking'),
+    cartons:      v('f-cartons'),
+    pallets:      v('f-pallets'),
+    weight:       v('f-weight'),
+    address:      v('f-address'),
+    contents:     v('f-contents'),
+    instructions: v('f-instructions'),
+  };
+}
+
+// Preview from form (before submit) — no PO yet, shows "DRAFT"
+function previewBolFromForm(type) {
+  if (!window.HANDS_BOL) { alert('BOL module failed to load. Refresh the page and try again.'); return; }
+  const data = collectFormData();
+  if (!data.client && !data.account && !data.contents) {
+    if (!confirm('The form is mostly empty — preview anyway?')) return;
+  }
+  window.HANDS_BOL.openPreview(type, data, 'DRAFT');
+}
+
+// Post-submit BOL picker (from success screen)
+function openBolPicker() {
+  document.getElementById('bol-picker').style.display = 'flex';
+}
+
+function generateBol(type) {
+  document.getElementById('bol-picker').style.display = 'none';
+  if (!window.HANDS_BOL) { alert('BOL module failed to load.'); return; }
+  const d  = lastSubmittedData || {};
+  const po = createdItemId || '—';
+  window.HANDS_BOL.openPreview(type, d, po);
+}
+
 // Set today's date as default
 document.getElementById('f-date').valueAsDate = new Date();
+
 </script>
 </body>
 </html>
