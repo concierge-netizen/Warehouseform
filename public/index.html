@@ -369,11 +369,8 @@ h1,h2,h3,.bebas{font-family:'Bebas Neue',Impact,Arial,sans-serif;font-weight:400
 
     <div class="submit-row" style="margin-top:14px;">
       <button class="btn btn-primary" id="submit-btn" onclick="submitForm()">Create &amp; Notify</button>
-      <button class="btn btn-outline" onclick="previewBolFromForm('full')" title="Preview 8.5×11 BOL with current form data">👁 Preview Full BOL</button>
-      <button class="btn btn-outline" onclick="previewBolFromForm('condensed')" title="Preview 4×6 BOL with current form data">👁 Preview 4×6</button>
       <button class="btn btn-ghost" onclick="resetForm()">Clear Form</button>
     </div>
-    <p style="font-size:10px;color:#444;margin-top:10px;line-height:1.5;">Preview BOLs before submitting — PO # will show as <strong style="color:var(--label);">DRAFT</strong>. After creating the record, a real PO will be assigned.</p>
   </div>
 
   </div><!-- /form-panel -->
@@ -386,35 +383,14 @@ h1,h2,h3,.bebas{font-family:'Bebas Neue',Impact,Arial,sans-serif;font-weight:400
     <div class="sc-po">PO #<span id="sc-po-val">—</span></div>
     <p style="font-size:12px;color:#444;">Client: <span id="sc-client-val"></span> &bull; <span id="sc-account-val"></span></p>
     <div class="sc-links">
-      <button class="btn btn-primary" onclick="openBolPicker()" style="background:var(--warn);">📄 Generate BOL</button>
       <a id="sc-monday-link" href="#" target="_blank" class="btn btn-outline" style="text-decoration:none;">Open in Monday</a>
       <a id="sc-billing-link" href="#" target="_blank" class="btn btn-ghost" style="text-decoration:none;display:none;">Billing Record</a>
-      <button class="btn btn-ghost" onclick="newEntry()">New Entry</button>
-    </div>
-  </div>
-
-  <!-- BOL PICKER MODAL -->
-  <div id="bol-picker" style="display:none;position:fixed;inset:0;background:#0a0a0ad9;z-index:200;align-items:center;justify-content:center;padding:20px;">
-    <div style="background:var(--card);border:1px solid var(--border);border-radius:6px;padding:28px;max-width:440px;width:100%;">
-      <div style="font-family:'Bebas Neue',Impact,Arial,sans-serif;font-size:20px;letter-spacing:2px;color:var(--green);margin-bottom:8px;">Choose BOL Format</div>
-      <p style="font-size:12px;color:var(--muted);margin-bottom:20px;">Both formats pull live data from the Monday record.</p>
-      <div style="display:grid;gap:10px;">
-        <button class="btn btn-primary" onclick="generateBol('full')" style="padding:16px;text-align:left;">
-          <div style="font-size:13px;letter-spacing:1.5px;">📄 Full BOL — 8.5 × 11</div>
-          <div style="font-size:10px;font-weight:400;opacity:.7;margin-top:2px;letter-spacing:.5px;text-transform:none;">Detailed carrier/shipper/consignee, items table, signatures, terms</div>
-        </button>
-        <button class="btn btn-outline" onclick="generateBol('condensed')" style="padding:16px;text-align:left;">
-          <div style="font-size:13px;letter-spacing:1.5px;">🏷️ Condensed BOL — 4 × 6</div>
-          <div style="font-size:10px;font-weight:400;opacity:.7;margin-top:2px;letter-spacing:.5px;text-transform:none;">Thermal-printer friendly, key fields only</div>
-        </button>
-        <button class="btn btn-ghost" onclick="document.getElementById('bol-picker').style.display='none';" style="margin-top:6px;">Cancel</button>
-      </div>
+      <button class="btn btn-primary" onclick="newEntry()">New Entry</button>
     </div>
   </div>
 
 </div><!-- /page -->
 
-<script src="bol.js"></script>
 <script>
 // ══════════════════════════════════════════════════════════════
 //  CONFIG — update these values
@@ -424,18 +400,18 @@ const CONFIG = {
   MONDAY_API_URL:    'https://api.monday.com/v2',
   MONDAY_API_TOKEN:  'eyJhbGciOiJIUzI1NiJ9.eyJ0aWQiOjYzNjEzNzc5MSwiYWFpIjoxMSwidWlkIjoxNDk4NzI0NSwiaWFkIjoiMjAyNi0wMy0yMlQxNzoyNTo1MC4wMDBaIiwicGVyIjoibWU6d3JpdGUiLCJhY3RpZCI6NjYxOTgxNSwicmduIjoidXNlMSJ9.RLTGytTbLaran19E20Ag8nzxdaWuwVKVZNx3fdvAIBQ',   // paste token
   BOARD_ID:          '18405667848',
-  GROUP_INBOUND:     'topics',        // "Activity" — single group for both directions
-  GROUP_OUTBOUND:    'topics',        // same group; filter by Direction column in Monday view
+  GROUP_INBOUND:     'topics',        // "Inbound 2nd Qtr"
+  GROUP_OUTBOUND:    'new_group',     // "Outbound 2nd Otr"
 
   // Cloudinary
   CLOUDINARY_CLOUD:  'dxkpbjicu',
   CLOUDINARY_PRESET: 'hands_pod_photos',
   CLOUDINARY_URL:    'https://api.cloudinary.com/v1_1/dxkpbjicu/image/upload',
 
-  // Zapier webhooks
-  ZAPIER_INBOUND:    'https://hooks.zapier.com/hooks/catch/9182863/INBOUND_HOOK/',   // triggers inbound email
-  ZAPIER_OUTBOUND:   'https://hooks.zapier.com/hooks/catch/9182863/OUTBOUND_HOOK/',  // triggers outbound email
-  ZAPIER_WRITEBACK:  'https://hooks.zapier.com/hooks/catch/9182863/upqbwii/',        // photo URL write-back
+  // Resend email
+  RESEND_API_KEY:    're_YOUR_RESEND_KEY_HERE',
+  EMAIL_FROM:        'HANDS Logistics <concierge@handslogistics.com>',
+  EMAIL_REPLY_TO:    'concierge@handslogistics.com',
 
   // Billing portal
   BILLING_BASE_URL:  'https://handslogistics.netlify.app/billing',
@@ -703,45 +679,133 @@ async function writePhotoUrlsToMonday(itemId, photoUrls) {
 }
 
 // ══════════════════════════════════════════════════════════════
-//  ZAPIER — SET TRIGGER COLUMN + EMAIL WEBHOOK
+//  RESEND — SEND HTML EMAIL DIRECTLY
 // ══════════════════════════════════════════════════════════════
-async function triggerZapierEmail(itemId, formData, photoUrls) {
-  const webhook = formData.direction === 'inbound'
-    ? CONFIG.ZAPIER_INBOUND
-    : CONFIG.ZAPIER_OUTBOUND;
+async function sendResendEmail(itemId, formData, photoUrls) {
+  const isInbound  = formData.direction === 'inbound';
+  const typeLabel  = isInbound ? 'INBOUND RECEIPT' : 'OUTBOUND DISPATCH';
+  const accentColor= isInbound ? '#4a9eff' : '#f59e0b';
+  const dateLabel  = isInbound ? 'Date Received' : 'Ship Date';
+  const addrLabel  = isInbound ? 'Origin Address' : 'Ship-To Address';
 
-  const payload = {
-    itemId,
-    direction:           formData.direction,
-    clientName:          formData.client,
-    clientEmail:         formData.email,
-    account:             formData.account,
-    eventProject:        formData.project,
-    purpose:             formData.purpose,
-    carrier:             formData.carrier,
-    trackingNumber:      formData.tracking,
-    deliveryDate:        formData.date,
-    deliveryTime:        formData.time,
-    address:             formData.address,
-    cartonCount:         formData.cartons,
-    palletCount:         formData.pallets,
-    contentsDescription: formData.contents,
-    specialInstructions: formData.instructions,
-    invoiceCode:         formData.wbs,
-    billingStatus:       formData.billingStatus,
-    receivedShippedBy:   formData.handler,
-    photoUrl1:           photoUrls[0] || '',
-    photoUrl2:           photoUrls[1] || '',
-    submittedAt:         new Date().toISOString(),
-  };
+  const row = (label, value) => value
+    ? `<tr><td style="padding:6px 12px;color:#888;font-size:13px;white-space:nowrap;width:160px;">${label}</td><td style="padding:6px 12px;color:#f0f0f0;font-size:13px;">${value}</td></tr>`
+    : '';
 
-  // Fire-and-forget — Zapier responds asynchronously
-  fetch(webhook, {
+  const photoHtml = photoUrls.length
+    ? `<div style="margin-top:24px;">
+        <p style="color:#888;font-size:12px;text-transform:uppercase;letter-spacing:1px;margin:0 0 10px;">Photos</p>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;">
+          ${photoUrls.map((u, i) => `<a href="${u}" target="_blank"><img src="${u}" alt="Photo ${i+1}" style="width:180px;height:120px;object-fit:cover;border-radius:6px;border:1px solid #333;"></a>`).join('')}
+        </div>
+      </div>`
+    : '';
+
+  const html = `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#0d0d0d;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#0d0d0d;padding:40px 0;">
+    <tr><td align="center">
+      <table width="600" cellpadding="0" cellspacing="0" style="background:#1a1a1a;border-radius:12px;overflow:hidden;border:1px solid #2a2a2a;max-width:600px;width:100%;">
+
+        <!-- Header -->
+        <tr><td style="background:#111;padding:28px 32px;border-bottom:3px solid ${accentColor};">
+          <table width="100%" cellpadding="0" cellspacing="0">
+            <tr>
+              <td>
+                <p style="margin:0;font-size:11px;color:#888;letter-spacing:2px;text-transform:uppercase;">HANDS Logistics</p>
+                <h1 style="margin:4px 0 0;font-size:22px;color:#fff;font-weight:700;letter-spacing:0.5px;">${typeLabel}</h1>
+              </td>
+              <td align="right">
+                <span style="background:${accentColor};color:#fff;font-size:11px;font-weight:700;padding:6px 14px;border-radius:20px;letter-spacing:1px;">${isInbound ? 'INBOUND' : 'OUTBOUND'}</span>
+              </td>
+            </tr>
+          </table>
+        </td></tr>
+
+        <!-- PO Banner -->
+        <tr><td style="background:#222;padding:14px 32px;border-bottom:1px solid #2a2a2a;">
+          <p style="margin:0;font-size:12px;color:#888;">Purchase Order #</p>
+          <p style="margin:4px 0 0;font-size:20px;font-weight:700;color:${accentColor};letter-spacing:1px;">${itemId}</p>
+        </td></tr>
+
+        <!-- Details Table -->
+        <tr><td style="padding:24px 20px 8px;">
+          <p style="margin:0 0 10px 12px;font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px;">Shipment Details</p>
+          <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+            ${row('Client', formData.client)}
+            ${row('Account / Brand', formData.account)}
+            ${row('Project / Event', formData.project)}
+            ${row('Purpose', formData.purpose)}
+            ${row(dateLabel, formData.date)}
+            ${row('Carrier', formData.carrier)}
+            ${row('Tracking #', formData.tracking)}
+            ${row(addrLabel, formData.address)}
+            ${row('Cartons', formData.cartons)}
+            ${row('Pallets', formData.pallets)}
+            ${row('Weight', formData.weight ? formData.weight + ' lbs' : '')}
+            ${row('Contents', formData.contents)}
+            ${row('Special Instructions', formData.instructions)}
+            ${row('Handler', formData.handler)}
+            ${row('WBS / Invoice Code', formData.wbs)}
+            ${row('Billing Status', formData.billingStatus)}
+          </table>
+        </td></tr>
+
+        <!-- Photos -->
+        ${photoHtml ? `<tr><td style="padding:0 32px 24px;">${photoHtml}</td></tr>` : ''}
+
+        <!-- CTA -->
+        <tr><td style="padding:8px 32px 32px;">
+          <a href="https://handslogistics.monday.com/boards/18405667848" target="_blank"
+            style="display:inline-block;background:${accentColor};color:#fff;font-size:13px;font-weight:700;padding:12px 24px;border-radius:8px;text-decoration:none;letter-spacing:0.5px;">
+            View in Monday.com →
+          </a>
+        </td></tr>
+
+        <!-- Footer -->
+        <tr><td style="background:#111;padding:18px 32px;border-top:1px solid #2a2a2a;">
+          <p style="margin:0;font-size:11px;color:#555;text-align:center;">
+            HANDS Logistics · 8540 Dean Martin Dr, Suite 160, Las Vegas NV 89139<br>
+            <a href="mailto:concierge@handslogistics.com" style="color:#6dba96;text-decoration:none;">concierge@handslogistics.com</a>
+          </p>
+        </td></tr>
+
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+
+  const subject = isInbound
+    ? `[HANDS] Inbound Receipt — ${formData.account} · PO #${itemId}`
+    : `[HANDS] Outbound Dispatch — ${formData.account} · PO #${itemId}`;
+
+  // Send to client email + always CC concierge
+  const toAddresses = [formData.email];
+
+  const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-    mode: 'no-cors',
-  }).catch(() => {});
+    headers: {
+      'Content-Type':  'application/json',
+      'Authorization': `Bearer ${CONFIG.RESEND_API_KEY}`,
+    },
+    body: JSON.stringify({
+      from:     CONFIG.EMAIL_FROM,
+      to:       toAddresses,
+      cc:       [CONFIG.EMAIL_REPLY_TO],
+      reply_to: CONFIG.EMAIL_REPLY_TO,
+      subject,
+      html,
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(`Resend error: ${err.message || res.status}`);
+  }
+  return await res.json();
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -842,34 +906,31 @@ async function submitForm() {
 
   try {
     // Step 1: Create Monday item
-    showMsg(msg, 'info', 'Step 1/3 — Creating Monday.com record…');
+    showMsg(msg, 'info', 'Step 1/4 — Creating Monday.com record…');
     fill.style.width = '20%';
     const itemId = await createMondayItem(formData);
     createdItemId = itemId;
     fill.style.width = '40%';
 
     // Step 2: Upload photos to Cloudinary
-    showMsg(msg, 'info', 'Step 2/3 — Uploading photos to Cloudinary…');
+    showMsg(msg, 'info', 'Step 2/4 — Uploading photos to Cloudinary…');
     const photoUrls = await uploadPhotosToCloudinary(itemId);
     fill.style.width = '70%';
 
     // Step 3: Write photo URLs back to Monday
     if (photoUrls.length) {
-      showMsg(msg, 'info', 'Step 3/3 — Linking photos to record…');
+      showMsg(msg, 'info', 'Step 3/4 — Linking photos to record…');
       await writePhotoUrlsToMonday(itemId, photoUrls);
     }
     fill.style.width = '90%';
 
-    // Step 4: Trigger Zapier email (fire and forget)
+    // Step 4: Send email via Resend
     if (sendEmail) {
-      showMsg(msg, 'info', 'Triggering client notification…');
-      triggerZapierEmail(itemId, formData, photoUrls);
+      showMsg(msg, 'info', 'Step 4/4 — Sending client notification…');
+      await sendResendEmail(itemId, formData, photoUrls);
     }
 
     fill.style.width = '100%';
-
-    // Snapshot data for BOL generator
-    lastSubmittedData = formData;
 
     // Show success
     const billingUrl = buildBillingUrl(itemId, formData, photoUrls);
@@ -927,63 +988,8 @@ function newEntry() {
   resetForm();
 }
 
-// ══════════════════════════════════════════════════════════════
-//  BOL GENERATOR  (uses shared bol.js → window.HANDS_BOL)
-// ══════════════════════════════════════════════════════════════
-let lastSubmittedData = null;   // snapshot of last successful submit (for post-submit "Generate BOL")
-
-function collectFormData() {
-  // Read whatever's currently typed into the form — used by Preview buttons before submit
-  return {
-    direction:    direction,
-    client:       v('f-client'),
-    account:      v('f-account'),
-    email:        v('f-email'),
-    phone:        v('f-phone'),
-    project:      v('f-project'),
-    purpose:      v('f-purpose'),
-    wbs:          v('f-wbs'),
-    handler:      v('f-handler'),
-    date:         v('f-date'),
-    time:         v('f-time'),
-    status:       v('f-status'),
-    carrier:      v('f-carrier'),
-    tracking:     v('f-tracking'),
-    cartons:      v('f-cartons'),
-    pallets:      v('f-pallets'),
-    weight:       v('f-weight'),
-    address:      v('f-address'),
-    contents:     v('f-contents'),
-    instructions: v('f-instructions'),
-  };
-}
-
-// Preview from form (before submit) — no PO yet, shows "DRAFT"
-function previewBolFromForm(type) {
-  if (!window.HANDS_BOL) { alert('BOL module failed to load. Refresh the page and try again.'); return; }
-  const data = collectFormData();
-  if (!data.client && !data.account && !data.contents) {
-    if (!confirm('The form is mostly empty — preview anyway?')) return;
-  }
-  window.HANDS_BOL.openPreview(type, data, 'DRAFT');
-}
-
-// Post-submit BOL picker (from success screen)
-function openBolPicker() {
-  document.getElementById('bol-picker').style.display = 'flex';
-}
-
-function generateBol(type) {
-  document.getElementById('bol-picker').style.display = 'none';
-  if (!window.HANDS_BOL) { alert('BOL module failed to load.'); return; }
-  const d  = lastSubmittedData || {};
-  const po = createdItemId || '—';
-  window.HANDS_BOL.openPreview(type, d, po);
-}
-
 // Set today's date as default
 document.getElementById('f-date').valueAsDate = new Date();
-
 </script>
 </body>
 </html>
