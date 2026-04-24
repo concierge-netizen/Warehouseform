@@ -408,10 +408,8 @@ const CONFIG = {
   CLOUDINARY_PRESET: 'hands_pod_photos',
   CLOUDINARY_URL:    'https://api.cloudinary.com/v1_1/dxkpbjicu/image/upload',
 
-  // Resend email
-  RESEND_API_KEY:    're_YOUR_RESEND_KEY_HERE',
-  EMAIL_FROM:        'HANDS Logistics <concierge@handslogistics.com>',
-  EMAIL_REPLY_TO:    'concierge@handslogistics.com',
+  // Email via Netlify function → Resend
+  EMAIL_FUNCTION:    '/.netlify/functions/send-email',
 
   // Billing portal
   BILLING_BASE_URL:  'https://handslogistics.netlify.app/billing',
@@ -679,133 +677,162 @@ async function writePhotoUrlsToMonday(itemId, photoUrls) {
 }
 
 // ══════════════════════════════════════════════════════════════
-//  RESEND — SEND HTML EMAIL DIRECTLY
+//  EMAIL HTML BUILDER (shared by preview + send function)
 // ══════════════════════════════════════════════════════════════
-async function sendResendEmail(itemId, formData, photoUrls) {
-  const isInbound  = formData.direction === 'inbound';
+function buildEmailHtml(d) {
+  const isInbound  = d.direction === 'inbound';
   const typeLabel  = isInbound ? 'INBOUND RECEIPT' : 'OUTBOUND DISPATCH';
-  const accentColor= isInbound ? '#4a9eff' : '#f59e0b';
+  const accent     = isInbound ? '#4a9eff' : '#f59e0b';
   const dateLabel  = isInbound ? 'Date Received' : 'Ship Date';
   const addrLabel  = isInbound ? 'Origin Address' : 'Ship-To Address';
 
   const row = (label, value) => value
-    ? `<tr><td style="padding:6px 12px;color:#888;font-size:13px;white-space:nowrap;width:160px;">${label}</td><td style="padding:6px 12px;color:#f0f0f0;font-size:13px;">${value}</td></tr>`
+    ? `<tr>
+         <td style="padding:6px 12px;color:#888;font-size:13px;white-space:nowrap;width:160px;">${label}</td>
+         <td style="padding:6px 12px;color:#f0f0f0;font-size:13px;">${value}</td>
+       </tr>`
     : '';
 
-  const photoHtml = photoUrls.length
-    ? `<div style="margin-top:24px;">
-        <p style="color:#888;font-size:12px;text-transform:uppercase;letter-spacing:1px;margin:0 0 10px;">Photos</p>
-        <div style="display:flex;gap:12px;flex-wrap:wrap;">
-          ${photoUrls.map((u, i) => `<a href="${u}" target="_blank"><img src="${u}" alt="Photo ${i+1}" style="width:180px;height:120px;object-fit:cover;border-radius:6px;border:1px solid #333;"></a>`).join('')}
-        </div>
-      </div>`
+  const photos = [d.photoUrl1, d.photoUrl2].filter(Boolean);
+  const photoHtml = photos.length
+    ? `<tr><td colspan="2" style="padding:16px 12px 8px;">
+         <p style="margin:0 0 8px;color:#888;font-size:11px;text-transform:uppercase;letter-spacing:1px;">Photos</p>
+         <div>${photos.map((u, i) =>
+           `<a href="${u}" target="_blank"><img src="${u}" alt="Photo ${i+1}"
+             style="width:160px;height:110px;object-fit:cover;border-radius:6px;border:1px solid #333;margin-right:10px;"></a>`
+         ).join('')}</div>
+       </td></tr>`
     : '';
 
-  const html = `<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+  return `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body style="margin:0;padding:0;background:#0d0d0d;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background:#0d0d0d;padding:40px 0;">
-    <tr><td align="center">
-      <table width="600" cellpadding="0" cellspacing="0" style="background:#1a1a1a;border-radius:12px;overflow:hidden;border:1px solid #2a2a2a;max-width:600px;width:100%;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#0d0d0d;padding:40px 0;">
+<tr><td align="center">
+<table width="600" cellpadding="0" cellspacing="0" style="background:#1a1a1a;border-radius:12px;overflow:hidden;border:1px solid #2a2a2a;max-width:600px;width:100%;">
+  <tr><td style="background:#111;padding:28px 32px;border-bottom:3px solid ${accent};">
+    <table width="100%" cellpadding="0" cellspacing="0"><tr>
+      <td>
+        <p style="margin:0;font-size:11px;color:#888;letter-spacing:2px;text-transform:uppercase;">HANDS Logistics</p>
+        <h1 style="margin:4px 0 0;font-size:22px;color:#fff;font-weight:700;">${typeLabel}</h1>
+      </td>
+      <td align="right">
+        <span style="background:${accent};color:#fff;font-size:11px;font-weight:700;padding:6px 14px;border-radius:20px;letter-spacing:1px;">
+          ${isInbound ? 'INBOUND' : 'OUTBOUND'}
+        </span>
+      </td>
+    </tr></table>
+  </td></tr>
+  <tr><td style="background:#222;padding:14px 32px;border-bottom:1px solid #2a2a2a;">
+    <p style="margin:0;font-size:12px;color:#888;">Purchase Order #</p>
+    <p style="margin:4px 0 0;font-size:20px;font-weight:700;color:${accent};letter-spacing:1px;">${d.itemId || 'PREVIEW'}</p>
+  </td></tr>
+  <tr><td style="padding:24px 20px 8px;">
+    <p style="margin:0 0 10px 12px;font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px;">Shipment Details</p>
+    <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+      ${row('Client', d.clientName)}
+      ${row('Account / Brand', d.account)}
+      ${row('Project / Event', d.eventProject)}
+      ${row('Purpose', d.purpose)}
+      ${row(dateLabel, d.deliveryDate)}
+      ${row('Carrier', d.carrier)}
+      ${row('Tracking #', d.trackingNumber)}
+      ${row(addrLabel, d.address)}
+      ${row('Cartons', d.cartonCount)}
+      ${row('Pallets', d.palletCount)}
+      ${row('Contents', d.contentsDescription)}
+      ${row('Special Instructions', d.specialInstructions)}
+      ${row('Handler', d.receivedShippedBy)}
+      ${row('WBS / Invoice Code', d.invoiceCode)}
+      ${row('Billing Status', d.billingStatus)}
+      ${photoHtml}
+    </table>
+  </td></tr>
+  <tr><td style="padding:8px 32px 32px;">
+    <a href="https://handslogistics.monday.com/boards/18405667848" target="_blank"
+      style="display:inline-block;background:${accent};color:#fff;font-size:13px;font-weight:700;padding:12px 24px;border-radius:8px;text-decoration:none;">
+      View in Monday.com →
+    </a>
+  </td></tr>
+  <tr><td style="background:#111;padding:18px 32px;border-top:1px solid #2a2a2a;">
+    <p style="margin:0;font-size:11px;color:#555;text-align:center;">
+      HANDS Logistics · 8540 Dean Martin Dr, Suite 160, Las Vegas NV 89139<br>
+      <a href="mailto:concierge@handslogistics.com" style="color:#6dba96;text-decoration:none;">concierge@handslogistics.com</a>
+    </p>
+  </td></tr>
+</table></td></tr></table>
+</body></html>`;
+}
 
-        <!-- Header -->
-        <tr><td style="background:#111;padding:28px 32px;border-bottom:3px solid ${accentColor};">
-          <table width="100%" cellpadding="0" cellspacing="0">
-            <tr>
-              <td>
-                <p style="margin:0;font-size:11px;color:#888;letter-spacing:2px;text-transform:uppercase;">HANDS Logistics</p>
-                <h1 style="margin:4px 0 0;font-size:22px;color:#fff;font-weight:700;letter-spacing:0.5px;">${typeLabel}</h1>
-              </td>
-              <td align="right">
-                <span style="background:${accentColor};color:#fff;font-size:11px;font-weight:700;padding:6px 14px;border-radius:20px;letter-spacing:1px;">${isInbound ? 'INBOUND' : 'OUTBOUND'}</span>
-              </td>
-            </tr>
-          </table>
-        </td></tr>
+// ══════════════════════════════════════════════════════════════
+//  EMAIL PREVIEW — opens in new tab
+// ══════════════════════════════════════════════════════════════
+function previewEmail() {
+  const d = {
+    direction:           direction,
+    itemId:              'PREVIEW',
+    clientName:          v('f-client')    || '—',
+    account:             v('f-account')   || '—',
+    clientEmail:         v('f-email')     || '—',
+    eventProject:        v('f-project'),
+    purpose:             v('f-purpose'),
+    carrier:             v('f-carrier'),
+    trackingNumber:      v('f-tracking'),
+    deliveryDate:        v('f-date'),
+    deliveryTime:        v('f-time'),
+    address:             v('f-address'),
+    cartonCount:         v('f-cartons'),
+    palletCount:         v('f-pallets'),
+    contentsDescription: v('f-contents'),
+    specialInstructions: v('f-instructions'),
+    receivedShippedBy:   v('f-handler'),
+    invoiceCode:         v('f-wbs'),
+    billingStatus:       v('f-billing-status'),
+    photoUrl1:           photos[0] && photos[0].cloudinaryUrl ? photos[0].cloudinaryUrl : (photos[0] && photos[0].preview ? photos[0].preview : ''),
+    photoUrl2:           photos[1] && photos[1].cloudinaryUrl ? photos[1].cloudinaryUrl : (photos[1] && photos[1].preview ? photos[1].preview : ''),
+  };
+  const win = window.open('', '_blank');
+  win.document.write(buildEmailHtml(d));
+  win.document.close();
+}
 
-        <!-- PO Banner -->
-        <tr><td style="background:#222;padding:14px 32px;border-bottom:1px solid #2a2a2a;">
-          <p style="margin:0;font-size:12px;color:#888;">Purchase Order #</p>
-          <p style="margin:4px 0 0;font-size:20px;font-weight:700;color:${accentColor};letter-spacing:1px;">${itemId}</p>
-        </td></tr>
+// ══════════════════════════════════════════════════════════════
+//  EMAIL — POST TO NETLIFY FUNCTION → RESEND
+// ══════════════════════════════════════════════════════════════
+async function sendEmail(itemId, formData, photoUrls) {
+  const payload = {
+    itemId,
+    direction:           formData.direction,
+    clientName:          formData.client,
+    clientEmail:         formData.email,
+    account:             formData.account,
+    eventProject:        formData.project,
+    purpose:             formData.purpose,
+    carrier:             formData.carrier,
+    trackingNumber:      formData.tracking,
+    deliveryDate:        formData.date,
+    deliveryTime:        formData.time,
+    address:             formData.address,
+    cartonCount:         formData.cartons,
+    palletCount:         formData.pallets,
+    contentsDescription: formData.contents,
+    specialInstructions: formData.instructions,
+    invoiceCode:         formData.wbs,
+    billingStatus:       formData.billingStatus,
+    receivedShippedBy:   formData.handler,
+    photoUrl1:           photoUrls[0] || '',
+    photoUrl2:           photoUrls[1] || '',
+  };
 
-        <!-- Details Table -->
-        <tr><td style="padding:24px 20px 8px;">
-          <p style="margin:0 0 10px 12px;font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px;">Shipment Details</p>
-          <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
-            ${row('Client', formData.client)}
-            ${row('Account / Brand', formData.account)}
-            ${row('Project / Event', formData.project)}
-            ${row('Purpose', formData.purpose)}
-            ${row(dateLabel, formData.date)}
-            ${row('Carrier', formData.carrier)}
-            ${row('Tracking #', formData.tracking)}
-            ${row(addrLabel, formData.address)}
-            ${row('Cartons', formData.cartons)}
-            ${row('Pallets', formData.pallets)}
-            ${row('Weight', formData.weight ? formData.weight + ' lbs' : '')}
-            ${row('Contents', formData.contents)}
-            ${row('Special Instructions', formData.instructions)}
-            ${row('Handler', formData.handler)}
-            ${row('WBS / Invoice Code', formData.wbs)}
-            ${row('Billing Status', formData.billingStatus)}
-          </table>
-        </td></tr>
-
-        <!-- Photos -->
-        ${photoHtml ? `<tr><td style="padding:0 32px 24px;">${photoHtml}</td></tr>` : ''}
-
-        <!-- CTA -->
-        <tr><td style="padding:8px 32px 32px;">
-          <a href="https://handslogistics.monday.com/boards/18405667848" target="_blank"
-            style="display:inline-block;background:${accentColor};color:#fff;font-size:13px;font-weight:700;padding:12px 24px;border-radius:8px;text-decoration:none;letter-spacing:0.5px;">
-            View in Monday.com →
-          </a>
-        </td></tr>
-
-        <!-- Footer -->
-        <tr><td style="background:#111;padding:18px 32px;border-top:1px solid #2a2a2a;">
-          <p style="margin:0;font-size:11px;color:#555;text-align:center;">
-            HANDS Logistics · 8540 Dean Martin Dr, Suite 160, Las Vegas NV 89139<br>
-            <a href="mailto:concierge@handslogistics.com" style="color:#6dba96;text-decoration:none;">concierge@handslogistics.com</a>
-          </p>
-        </td></tr>
-
-      </table>
-    </td></tr>
-  </table>
-</body>
-</html>`;
-
-  const subject = isInbound
-    ? `[HANDS] Inbound Receipt — ${formData.account} · PO #${itemId}`
-    : `[HANDS] Outbound Dispatch — ${formData.account} · PO #${itemId}`;
-
-  // Send to client email + always CC concierge
-  const toAddresses = [formData.email];
-
-  const res = await fetch('https://api.resend.com/emails', {
+  const res = await fetch(CONFIG.EMAIL_FUNCTION, {
     method: 'POST',
-    headers: {
-      'Content-Type':  'application/json',
-      'Authorization': `Bearer ${CONFIG.RESEND_API_KEY}`,
-    },
-    body: JSON.stringify({
-      from:     CONFIG.EMAIL_FROM,
-      to:       toAddresses,
-      cc:       [CONFIG.EMAIL_REPLY_TO],
-      reply_to: CONFIG.EMAIL_REPLY_TO,
-      subject,
-      html,
-    }),
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
   });
-
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(`Resend error: ${err.message || res.status}`);
+    throw new Error(`Email error: ${err.error || res.status}`);
   }
-  return await res.json();
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -924,10 +951,10 @@ async function submitForm() {
     }
     fill.style.width = '90%';
 
-    // Step 4: Send email via Resend
+    // Step 4: Trigger Zapier email (fire and forget)
     if (sendEmail) {
       showMsg(msg, 'info', 'Step 4/4 — Sending client notification…');
-      await sendResendEmail(itemId, formData, photoUrls);
+      await sendEmail(itemId, formData, photoUrls);
     }
 
     fill.style.width = '100%';
